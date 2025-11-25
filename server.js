@@ -2,18 +2,43 @@ import express from 'express';
 import cors from 'cors';
 import { config } from './config.js';
 import { initDatabase } from './database.js';
-import { chatWithAI, getModelosDisponibles } from './aiService.js';
+import { chatWithAI, getModelosDisponibles, obtenerHistorial, limpiarConversacion, obtenerInfoSesion } from './aiService.js';
 import * as db from './database.js';
+import {
+  registrarUsuario,
+  autenticarUsuario,
+  buscarUsuarioPorId,
+  buscarTodosLosUsuarios,
+  actualizarPerfil,
+  cambiarPassword,
+  eliminarUsuario,
+  generarToken
+} from './authService.js';
+import { autenticar, autenticarOpcional } from './middleware/auth.js';
 
 const app = express();
 
 // Middlewares
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Inicializar base de datos
+// Inicializar base de datos antes de iniciar el servidor
+let dbInitialized = false;
+
 (async () => {
-  await initDatabase();
+  try {
+    console.log('🔄 Inicializando base de datos...');
+    await initDatabase();
+    dbInitialized = true;
+    console.log('✅ Base de datos inicializada correctamente');
+  } catch (error) {
+    console.error('❌ Error inicializando base de datos:', error);
+    process.exit(1);
+  }
 })();
 
 // Rutas
@@ -32,6 +57,253 @@ app.get('/health', (req, res) => {
   res.json({ status: 'healthy' });
 });
 
+// ========== RUTAS DE AUTENTICACIÓN ==========
+
+// POST - Registro de usuario
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { nombreCompleto, email, password, telefono } = req.body;
+    
+    if (!nombreCompleto || !email || !password) {
+      return res.status(400).json({
+        error: 'Nombre completo, email y contraseña son requeridos'
+      });
+    }
+    
+    const usuario = await registrarUsuario({
+      nombreCompleto,
+      email,
+      password,
+      telefono
+    });
+    
+    // Generar token
+    const { password: _, ...usuarioSinPassword } = usuario;
+    const token = generarToken(usuario);
+    
+    res.status(201).json({
+      success: true,
+      message: 'Usuario registrado correctamente',
+      usuario: usuarioSinPassword,
+      token
+    });
+  } catch (error) {
+    res.status(400).json({
+      error: error.message
+    });
+  }
+});
+
+// POST - Login de usuario
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({
+        error: 'Email y contraseña son requeridos'
+      });
+    }
+    
+    const resultado = await autenticarUsuario(email, password);
+    
+    res.json({
+      success: true,
+      message: 'Login exitoso',
+      ...resultado
+    });
+  } catch (error) {
+    res.status(401).json({
+      error: error.message
+    });
+  }
+});
+
+// GET - Obtener perfil del usuario autenticado
+app.get('/api/auth/perfil', autenticar, async (req, res) => {
+  try {
+    const usuario = await buscarUsuarioPorId(req.usuario.id);
+    if (!usuario) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    
+    const { password: _, ...usuarioSinPassword } = usuario;
+    
+    res.json({
+      success: true,
+      usuario: usuarioSinPassword
+    });
+  } catch (error) {
+    res.status(404).json({
+      error: error.message
+    });
+  }
+});
+
+// PUT - Actualizar perfil
+app.put('/api/auth/perfil', autenticar, async (req, res) => {
+  try {
+    const { nombreCompleto, telefono } = req.body;
+    const usuarioActualizado = await actualizarPerfil(req.usuario.id, {
+      nombreCompleto,
+      telefono
+    });
+    
+    res.json({
+      success: true,
+      message: 'Perfil actualizado correctamente',
+      usuario: usuarioActualizado
+    });
+  } catch (error) {
+    res.status(400).json({
+      error: error.message
+    });
+  }
+});
+
+// PUT - Cambiar contraseña
+app.put('/api/auth/cambiar-password', autenticar, async (req, res) => {
+  try {
+    const { passwordActual, passwordNueva } = req.body;
+    
+    if (!passwordActual || !passwordNueva) {
+      return res.status(400).json({
+        error: 'Contraseña actual y nueva contraseña son requeridas'
+      });
+    }
+    
+    const resultado = await cambiarPassword(
+      req.usuario.id,
+      passwordActual,
+      passwordNueva
+    );
+    
+    res.json({
+      success: true,
+      ...resultado
+    });
+  } catch (error) {
+    res.status(400).json({
+      error: error.message
+    });
+  }
+});
+
+// GET - Verificar token
+app.get('/api/auth/verify', autenticar, (req, res) => {
+  res.json({
+    success: true,
+    usuario: req.usuario,
+    message: 'Token válido'
+  });
+});
+
+// ========== CRUD DE USUARIOS ==========
+
+// GET - Obtener todos los usuarios (solo usuario autenticado)
+app.get('/api/usuarios', autenticar, async (req, res) => {
+  try {
+    const usuarios = await buscarTodosLosUsuarios();
+    res.json({
+      success: true,
+      total: usuarios.length,
+      usuarios
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: error.message
+    });
+  }
+});
+
+// GET - Obtener un usuario por ID
+app.get('/api/usuarios/:id', autenticar, async (req, res) => {
+  try {
+    const usuarioId = parseInt(req.params.id);
+    
+    // Solo puede ver su propio perfil
+    if (req.usuario.id !== usuarioId) {
+      return res.status(403).json({
+        error: 'No tienes permiso para ver este usuario'
+      });
+    }
+    
+    const usuario = await buscarUsuarioPorId(usuarioId);
+    
+    if (!usuario) {
+      return res.status(404).json({
+        error: 'Usuario no encontrado'
+      });
+    }
+    
+    const { password: _, ...usuarioSinPassword } = usuario;
+    
+    res.json({
+      success: true,
+      usuario: usuarioSinPassword
+    });
+  } catch (error) {
+    res.status(404).json({
+      error: error.message
+    });
+  }
+});
+
+// PUT - Actualizar usuario (solo propio perfil)
+app.put('/api/usuarios/:id', autenticar, async (req, res) => {
+  try {
+    const usuarioId = parseInt(req.params.id);
+    
+    // Solo puede actualizar su propio perfil
+    if (req.usuario.id !== usuarioId) {
+      return res.status(403).json({
+        error: 'No tienes permiso para actualizar este usuario'
+      });
+    }
+    
+    const { nombreCompleto, telefono } = req.body;
+    const usuarioActualizado = await actualizarPerfil(usuarioId, {
+      nombreCompleto,
+      telefono
+    });
+    
+    res.json({
+      success: true,
+      message: 'Usuario actualizado correctamente',
+      usuario: usuarioActualizado
+    });
+  } catch (error) {
+    res.status(400).json({
+      error: error.message
+    });
+  }
+});
+
+// DELETE - Eliminar usuario (solo propio perfil)
+app.delete('/api/usuarios/:id', autenticar, async (req, res) => {
+  try {
+    const usuarioId = parseInt(req.params.id);
+    
+    // Solo puede eliminar su propia cuenta
+    if (req.usuario.id !== usuarioId) {
+      return res.status(403).json({
+        error: 'No tienes permiso para eliminar este usuario'
+      });
+    }
+    
+    await eliminarUsuario(usuarioId);
+    
+    res.json({
+      success: true,
+      message: 'Usuario eliminado correctamente'
+    });
+  } catch (error) {
+    res.status(400).json({
+      error: error.message
+    });
+  }
+});
+
 // Endpoint para obtener modelos disponibles de Groq
 app.get('/api/modelos-groq', (req, res) => {
   try {
@@ -46,10 +318,10 @@ app.get('/api/modelos-groq', (req, res) => {
   }
 });
 
-// Endpoint principal de chat con IA
+// Endpoint principal de chat con IA (con memoria y detección mejorada)
 app.post('/api/chat', async (req, res) => {
   try {
-    const { message, modelo } = req.body;
+    const { message, modelo, sessionId } = req.body;
     
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ 
@@ -57,14 +329,22 @@ app.post('/api/chat', async (req, res) => {
       });
     }
     
-    // Si se proporciona un modelo, validarlo; si no, usar el del config
-    const result = await chatWithAI(message, modelo);
+    // Generar sessionId si no existe
+    const sesion = sessionId || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Obtener historial si existe
+    const historial = sessionId ? obtenerHistorial(sessionId) : [];
+    
+    // Llamar al chat con memoria
+    const result = await chatWithAI(message, modelo, sesion, historial);
     
     res.json({
       success: true,
       response: result.response,
       necesitaConsultaBD: result.necesitaConsultaBD,
-      modelo: result.modelo
+      intencion: result.intencion, // Nueva: tipo de intención detectada
+      modelo: result.modelo,
+      sessionId: result.sessionId // Devolver el sessionId para que el frontend lo use
     });
     
   } catch (error) {
@@ -73,6 +353,61 @@ app.post('/api/chat', async (req, res) => {
       error: 'Error al procesar la solicitud',
       message: error.message 
     });
+  }
+});
+
+// Endpoint para obtener el historial de una conversación
+app.get('/api/chat/historial/:sessionId', (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const historial = obtenerHistorial(sessionId);
+    
+    res.json({
+      success: true,
+      sessionId: sessionId,
+      total: historial.length,
+      historial: historial
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint para obtener información completa de una sesión
+app.get('/api/chat/sesion/:sessionId', (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const infoSesion = obtenerInfoSesion(sessionId);
+    
+    if (!infoSesion) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Sesión no encontrada' 
+      });
+    }
+    
+    res.json({
+      success: true,
+      sesion: infoSesion
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint para limpiar una conversación
+app.delete('/api/chat/:sessionId', (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    limpiarConversacion(sessionId);
+    
+    res.json({ 
+      success: true, 
+      message: 'Conversación limpiada correctamente',
+      sessionId: sessionId
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -337,12 +672,27 @@ app.delete('/api/modelos/:id', async (req, res) => {
   }
 });
 
-// Iniciar servidor
+// Iniciar servidor después de inicializar la base de datos
 const PORT = config.port;
 
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
-  console.log(`🤖 Modelo de IA: ${config.groq.model}`);
-  console.log(`📊 Base de datos inicializada`);
+// Función para iniciar el servidor después de inicializar la base de datos
+async function iniciarServidor() {
+  // Esperar a que la base de datos se inicialice
+  while (!dbInitialized) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  
+  app.listen(PORT, () => {
+    console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+    console.log(`🤖 Modelo de IA: ${config.groq.model}`);
+    console.log(`📊 Base de datos: ${config.database.usePostgres ? 'PostgreSQL (Render)' : 'SQLite (Local)'}`);
+    console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+  });
+}
+
+// Iniciar el servidor
+iniciarServidor().catch(error => {
+  console.error('❌ Error iniciando servidor:', error);
+  process.exit(1);
 });
 

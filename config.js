@@ -14,6 +14,10 @@ export const config = {
     path: process.env.DATABASE_PATH || './database.db',
     usePostgres: !!process.env.DATABASE_URL
   },
+  auth: {
+    jwtSecret: process.env.JWT_SECRET || 'tu_secret_key_muy_segura_cambiar_en_produccion',
+    jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d'
+  },
   port: process.env.PORT || 3000
 };
 

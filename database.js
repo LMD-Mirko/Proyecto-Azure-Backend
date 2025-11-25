@@ -102,14 +102,32 @@ export async function initDatabase() {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS usuarios (
           id SERIAL PRIMARY KEY,
-          nombre VARCHAR(255) NOT NULL,
+          nombre_completo VARCHAR(255) NOT NULL,
           email VARCHAR(255) UNIQUE NOT NULL,
+          password VARCHAR(255),
           telefono VARCHAR(50),
           fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           total_compras INTEGER DEFAULT 0,
-          activo BOOLEAN DEFAULT true
+          activo BOOLEAN DEFAULT true,
+          -- Campos para OAuth
+          google_id VARCHAR(255) UNIQUE,
+          avatar_url TEXT,
+          metodo_auth VARCHAR(50) DEFAULT 'local',
+          email_verificado BOOLEAN DEFAULT false,
+          token_verificacion VARCHAR(255),
+          fecha_ultimo_login TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
+      
+      // Crear índices para mejor rendimiento
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_usuarios_email ON usuarios(email)
+      `).catch(() => {});
+      
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_usuarios_google_id ON usuarios(google_id)
+      `).catch(() => {});
       
       await pool.query(`
         CREATE TABLE IF NOT EXISTS ventas (
@@ -169,6 +187,9 @@ export async function initDatabase() {
       
       console.log('✅ Tablas de PostgreSQL creadas/verificadas correctamente');
       
+      // Crear usuarios por defecto si no existen
+      await crearUsuariosPorDefecto();
+      
       // Verificar si hay datos, si no, insertar datos de ejemplo
       const productosCount = await pool.query('SELECT COUNT(*) as count FROM productos');
       if (parseInt(productosCount.rows[0].count) === 0) {
@@ -181,14 +202,6 @@ export async function initDatabase() {
           ('iPhone 15 Pro', 'Smartphones', 999.99, 50, 'El smartphone más avanzado de Apple con chip A17 Pro', 'Apple', 'A17 Pro, 256GB almacenamiento, Cámara 48MP, Pantalla 6.1" Super Retina', '2023-09-22'),
           ('Samsung Galaxy S24 Ultra', 'Smartphones', 1199.99, 35, 'Smartphone flagship con S Pen y cámara de 200MP', 'Samsung', 'Snapdragon 8 Gen 3, 256GB, Cámara 200MP, Pantalla 6.8" Dynamic AMOLED', '2024-01-17'),
           ('PlayStation 5', 'Gaming', 499.99, 45, 'Consola de videojuegos de última generación', 'Sony', 'AMD Zen 2, 16GB GDDR6, SSD 825GB, Ray Tracing', '2020-11-12')
-        `);
-        
-        // Insertar usuarios de ejemplo
-        await pool.query(`
-          INSERT INTO usuarios (nombre, email, telefono, total_compras) VALUES
-          ('Juan Pérez', 'juan.perez@email.com', '+34 600 123 456', 3),
-          ('María García', 'maria.garcia@email.com', '+34 600 234 567', 5),
-          ('Carlos López', 'carlos.lopez@email.com', '+34 600 345 678', 2)
         `);
         
         console.log('✅ Datos de ejemplo insertados');
@@ -218,14 +231,27 @@ export async function initDatabase() {
     db.exec(`
       CREATE TABLE IF NOT EXISTS usuarios (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre TEXT NOT NULL,
+        nombre_completo TEXT NOT NULL,
         email TEXT UNIQUE NOT NULL,
+        password TEXT,
         telefono TEXT,
         fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
         total_compras INTEGER DEFAULT 0,
-        activo INTEGER DEFAULT 1
+        activo INTEGER DEFAULT 1,
+        -- Campos para OAuth
+        google_id TEXT UNIQUE,
+        avatar_url TEXT,
+        metodo_auth TEXT DEFAULT 'local',
+        email_verificado INTEGER DEFAULT 0,
+        token_verificacion TEXT,
+        fecha_ultimo_login DATETIME,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    
+    // Crear índices
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_usuarios_email ON usuarios(email)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_usuarios_google_id ON usuarios(google_id)`);
 
     db.exec(`
       CREATE TABLE IF NOT EXISTS ventas (
@@ -255,6 +281,76 @@ export async function initDatabase() {
     `);
 
     console.log('Base de datos inicializada correctamente');
+    
+    // Crear usuarios por defecto si no existen
+    await crearUsuariosPorDefecto();
+  }
+}
+
+// Función para crear usuarios por defecto
+async function crearUsuariosPorDefecto() {
+  const bcrypt = await import('bcrypt');
+  
+  const usuariosPorDefecto = [
+    {
+      nombreCompleto: 'Mirko Limas',
+      email: 'limasmirko@gmail.com',
+      password: '1234567lp'
+    },
+    {
+      nombreCompleto: 'Shandler',
+      email: 'shandler@gmail.com',
+      password: '1234567lp'
+    }
+  ];
+  
+  try {
+    for (const usuario of usuariosPorDefecto) {
+      // Verificar si el usuario ya existe
+      let usuarioExistente;
+      
+      if (usePostgres) {
+        const result = await pool.query('SELECT id FROM usuarios WHERE email = $1', [usuario.email]);
+        usuarioExistente = result.rows[0];
+      } else {
+        const stmt = db.prepare('SELECT id FROM usuarios WHERE email = ?');
+        usuarioExistente = stmt.get(usuario.email);
+      }
+      
+      if (!usuarioExistente) {
+        // Hash de la contraseña
+        const passwordHash = await bcrypt.default.hash(usuario.password, 10);
+        
+        // Insertar usuario
+        if (usePostgres) {
+          await pool.query(`
+            INSERT INTO usuarios (nombre_completo, email, password, metodo_auth, activo, email_verificado)
+            VALUES ($1, $2, $3, 'local', true, true)
+            ON CONFLICT (email) DO NOTHING
+          `, [usuario.nombreCompleto, usuario.email, passwordHash]);
+          console.log(`✅ Usuario por defecto creado: ${usuario.email}`);
+        } else {
+          const stmt = db.prepare(`
+            INSERT INTO usuarios (nombre_completo, email, password, metodo_auth, activo, email_verificado)
+            VALUES (?, ?, ?, 'local', 1, 1)
+          `);
+          try {
+            stmt.run(usuario.nombreCompleto, usuario.email, passwordHash);
+            console.log(`✅ Usuario por defecto creado: ${usuario.email}`);
+          } catch (error) {
+            // Ignorar si ya existe (UNIQUE constraint)
+            if (!error.message.includes('UNIQUE constraint')) {
+              throw error;
+            }
+          }
+        }
+      } else {
+        console.log(`ℹ️  Usuario ya existe: ${usuario.email}`);
+      }
+    }
+  } catch (error) {
+    console.error('Error creando usuarios por defecto:', error);
+    // No lanzar error para no detener el inicio del servidor
   }
 }
 
@@ -468,5 +564,5 @@ export async function contarModelosPorTipo(tipo) {
   return result;
 }
 
-// Exportar db solo para SQLite (compatibilidad con scripts existentes)
-export { db };
+// Exportar db y pool para uso en otros módulos
+export { db, pool };
