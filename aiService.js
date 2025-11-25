@@ -51,38 +51,38 @@ function necesitaConsultaBD(mensaje) {
 /**
  * Obtiene información de la BD basada en la pregunta del usuario
  */
-function obtenerInfoBD(mensaje) {
+async function obtenerInfoBD(mensaje) {
   const mensajeLower = mensaje.toLowerCase();
   let info = null;
   
   // Detectar tipo de consulta
   if (mensajeLower.includes('cuántos') || mensajeLower.includes('cuántas')) {
     if (mensajeLower.includes('laptop') || mensajeLower.includes('portátil')) {
-      const laptops = db.getProductosPorCategoria('Laptops');
+      const laptops = await db.getProductosPorCategoria('Laptops');
       info = `Hay ${laptops.length} laptops disponibles en nuestra tienda.`;
     } else if (mensajeLower.includes('smartphone') || mensajeLower.includes('teléfono') || mensajeLower.includes('telefono')) {
-      const smartphones = db.getProductosPorCategoria('Smartphones');
+      const smartphones = await db.getProductosPorCategoria('Smartphones');
       info = `Hay ${smartphones.length} smartphones disponibles en nuestra tienda.`;
     } else if (mensajeLower.includes('usuario') || mensajeLower.includes('cliente')) {
-      const total = db.contarUsuarios();
-      const activos = db.contarUsuariosActivos();
+      const total = await db.contarUsuarios();
+      const activos = await db.contarUsuariosActivos();
       info = `Tenemos ${total.total} usuarios registrados, de los cuales ${activos.total} están activos.`;
     } else if (mensajeLower.includes('producto')) {
-      const total = db.contarProductos();
+      const total = await db.contarProductos();
       info = `Tenemos ${total.total} productos tecnológicos en nuestro catálogo.`;
     } else if (mensajeLower.includes('venta')) {
-      const total = db.contarVentas();
+      const total = await db.contarVentas();
       info = `Se han realizado ${total.total} ventas en total.`;
     } else {
       // Consulta general de estadísticas
-      const stats = db.getEstadisticas();
+      const stats = await db.getEstadisticas();
       info = `Estadísticas de la tienda:\n- Total de productos: ${stats.totalProductos}\n- Total de usuarios: ${stats.totalUsuarios}\n- Usuarios activos: ${stats.totalUsuariosActivos}\n- Total de ventas: ${stats.totalVentas}`;
     }
   } else if (mensajeLower.includes('precio') || mensajeLower.includes('cuesta') || mensajeLower.includes('vale')) {
     // Buscar producto por nombre
     const terminos = mensajeLower.split(' ').filter(p => p.length > 3);
     for (const termino of terminos) {
-      const productos = db.buscarProductos(termino);
+      const productos = await db.buscarProductos(termino);
       if (productos.length > 0) {
         const producto = productos[0];
         info = `El ${producto.nombre} tiene un precio de $${producto.precio} y hay ${producto.stock} unidades en stock.`;
@@ -91,20 +91,20 @@ function obtenerInfoBD(mensaje) {
     }
   } else if (mensajeLower.includes('qué productos') || mensajeLower.includes('qué modelos')) {
     if (mensajeLower.includes('apple')) {
-      const productos = db.buscarProductos('Apple');
+      const productos = await db.buscarProductos('Apple');
       info = `Productos de Apple disponibles:\n${productos.map(p => `- ${p.nombre} ($${p.precio}, Stock: ${p.stock})`).join('\n')}`;
     } else if (mensajeLower.includes('samsung')) {
-      const productos = db.buscarProductos('Samsung');
+      const productos = await db.buscarProductos('Samsung');
       info = `Productos de Samsung disponibles:\n${productos.map(p => `- ${p.nombre} ($${p.precio}, Stock: ${p.stock})`).join('\n')}`;
     } else {
-      const productos = db.getProductos();
+      const productos = await db.getProductos();
       const categorias = [...new Set(productos.map(p => p.categoria))];
       info = `Tenemos productos en las siguientes categorías:\n${categorias.map(c => `- ${c}`).join('\n')}`;
     }
   } else if (mensajeLower.includes('stock') || mensajeLower.includes('disponible')) {
     const terminos = mensajeLower.split(' ').filter(p => p.length > 3);
     for (const termino of terminos) {
-      const productos = db.buscarProductos(termino);
+      const productos = await db.buscarProductos(termino);
       if (productos.length > 0) {
         const producto = productos[0];
         info = `El ${producto.nombre} tiene ${producto.stock} unidades disponibles en stock.`;
@@ -112,7 +112,7 @@ function obtenerInfoBD(mensaje) {
       }
     }
   } else if (mensajeLower.includes('categoría') || mensajeLower.includes('categoria')) {
-    const stats = db.getEstadisticas();
+    const stats = await db.getEstadisticas();
     info = `Productos por categoría:\n${stats.productosPorCategoria.map(c => `- ${c.categoria}: ${c.cantidad} productos`).join('\n')}`;
   }
   
@@ -120,16 +120,88 @@ function obtenerInfoBD(mensaje) {
 }
 
 /**
- * Envía mensaje a Groq API
+ * Modelos disponibles de Groq
  */
-export async function chatWithAI(userMessage) {
+export const MODELOS_GROQ = [
+  {
+    id: 'llama-3.3-70b-versatile',
+    nombre: 'Llama 3.3 70B Versatile',
+    descripcion: 'Modelo versátil y potente para tareas generales',
+    provider: 'meta-llama'
+  },
+  {
+    id: 'llama-3.1-70b-versatile',
+    nombre: 'Llama 3.1 70B Versatile',
+    descripcion: 'Versión anterior del modelo versátil',
+    provider: 'meta-llama'
+  },
+  {
+    id: 'llama-3.1-8b-instant',
+    nombre: 'Llama 3.1 8B Instant',
+    descripcion: 'Modelo rápido y ligero para respuestas instantáneas',
+    provider: 'meta-llama'
+  },
+  {
+    id: 'llama-3.1-405b-reasoning',
+    nombre: 'Llama 3.1 405B Reasoning',
+    descripcion: 'Modelo avanzado para razonamiento complejo',
+    provider: 'meta-llama'
+  },
+  {
+    id: 'mixtral-8x7b-32768',
+    nombre: 'Mixtral 8x7B',
+    descripcion: 'Modelo Mixtral de alta calidad',
+    provider: 'mixtral'
+  },
+  {
+    id: 'gemma2-9b-it',
+    nombre: 'Gemma2 9B',
+    descripcion: 'Modelo Gemma2 optimizado para instrucciones',
+    provider: 'google'
+  },
+  {
+    id: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    nombre: 'Llama 4 Scout 17B',
+    descripcion: 'Modelo especializado en instrucciones',
+    provider: 'meta-llama'
+  }
+];
+
+/**
+ * Obtiene los modelos disponibles de Groq
+ */
+export function getModelosDisponibles() {
+  return MODELOS_GROQ;
+}
+
+/**
+ * Valida si un modelo es válido
+ */
+export function esModeloValido(modelo) {
+  return MODELOS_GROQ.some(m => m.id === modelo);
+}
+
+/**
+ * Envía mensaje a Groq API
+ * @param {string} userMessage - Mensaje del usuario
+ * @param {string} modelo - Modelo a usar (opcional, usa el del config si no se proporciona)
+ */
+export async function chatWithAI(userMessage, modelo = null) {
   try {
+    // Usar el modelo proporcionado o el del config
+    const modeloAUsar = modelo || config.groq.model;
+    
+    // Verificar si el modelo es válido
+    if (!esModeloValido(modeloAUsar)) {
+      throw new Error(`Modelo "${modeloAUsar}" no es válido. Modelos disponibles: ${MODELOS_GROQ.map(m => m.id).join(', ')}`);
+    }
+    
     // Verificar si necesita consultar BD
     const necesitaBD = necesitaConsultaBD(userMessage);
     let contextoBD = '';
     
     if (necesitaBD) {
-      const infoBD = obtenerInfoBD(userMessage);
+      const infoBD = await obtenerInfoBD(userMessage);
       if (infoBD) {
         contextoBD = `\n\nINFORMACIÓN DE LA BASE DE DATOS:\n${infoBD}\n\nUsa esta información para responder al usuario de manera natural y completa.`;
       }
@@ -151,7 +223,7 @@ export async function chatWithAI(userMessage) {
     const response = await axios.post(
       config.groq.apiUrl,
       {
-        model: config.groq.model,
+        model: modeloAUsar,
         messages: messages,
         temperature: 0.7,
         max_tokens: 1000
@@ -169,7 +241,7 @@ export async function chatWithAI(userMessage) {
     return {
       response: aiResponse,
       necesitaConsultaBD: necesitaBD,
-      modelo: config.groq.model
+      modelo: modeloAUsar
     };
     
   } catch (error) {

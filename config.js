@@ -9,7 +9,10 @@ export const config = {
     model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
   },
   database: {
-    path: process.env.DATABASE_PATH || './database.db'
+    // Si existe DATABASE_URL, usar PostgreSQL (Render), sino SQLite (local)
+    url: process.env.DATABASE_URL,
+    path: process.env.DATABASE_PATH || './database.db',
+    usePostgres: !!process.env.DATABASE_URL
   },
   port: process.env.PORT || 3000
 };
