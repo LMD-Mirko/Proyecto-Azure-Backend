@@ -78,11 +78,122 @@ async function execute(sql, params = []) {
 // Crear tablas
 export async function initDatabase() {
   if (usePostgres) {
-    // PostgreSQL - Las tablas se crean con el script SQL en Render
-    // Solo verificamos la conexión
+    // PostgreSQL - Crear tablas automáticamente si no existen
     try {
       await pool.query('SELECT 1');
       console.log('Base de datos PostgreSQL conectada correctamente');
+      
+      // Crear tablas si no existen
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS productos (
+          id SERIAL PRIMARY KEY,
+          nombre VARCHAR(255) NOT NULL,
+          categoria VARCHAR(100) NOT NULL,
+          precio DECIMAL(10, 2) NOT NULL,
+          stock INTEGER NOT NULL,
+          descripcion TEXT,
+          marca VARCHAR(100),
+          especificaciones TEXT,
+          fecha_lanzamiento VARCHAR(50),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS usuarios (
+          id SERIAL PRIMARY KEY,
+          nombre VARCHAR(255) NOT NULL,
+          email VARCHAR(255) UNIQUE NOT NULL,
+          telefono VARCHAR(50),
+          fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          total_compras INTEGER DEFAULT 0,
+          activo BOOLEAN DEFAULT true
+        )
+      `);
+      
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ventas (
+          id SERIAL PRIMARY KEY,
+          usuario_id INTEGER,
+          producto_id INTEGER,
+          cantidad INTEGER NOT NULL,
+          precio_total DECIMAL(10, 2) NOT NULL,
+          fecha_venta TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+          FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE
+        )
+      `);
+      
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS modelos (
+          id SERIAL PRIMARY KEY,
+          nombre VARCHAR(255) NOT NULL,
+          tipo VARCHAR(100) NOT NULL,
+          marca VARCHAR(100),
+          especificaciones TEXT,
+          descripcion TEXT,
+          datos_adicionales JSONB,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      
+      // Crear índices si no existen
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_productos_categoria ON productos(categoria)
+      `).catch(() => {}); // Ignorar si ya existe
+      
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_productos_marca ON productos(marca)
+      `).catch(() => {});
+      
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_modelos_tipo ON modelos(tipo)
+      `).catch(() => {});
+      
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_modelos_marca ON modelos(marca)
+      `).catch(() => {});
+      
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_ventas_usuario_id ON ventas(usuario_id)
+      `).catch(() => {});
+      
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_ventas_producto_id ON ventas(producto_id)
+      `).catch(() => {});
+      
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_usuarios_email ON usuarios(email)
+      `).catch(() => {});
+      
+      console.log('✅ Tablas de PostgreSQL creadas/verificadas correctamente');
+      
+      // Verificar si hay datos, si no, insertar datos de ejemplo
+      const productosCount = await pool.query('SELECT COUNT(*) as count FROM productos');
+      if (parseInt(productosCount.rows[0].count) === 0) {
+        console.log('📦 Insertando datos de ejemplo...');
+        // Insertar productos de ejemplo
+        await pool.query(`
+          INSERT INTO productos (nombre, categoria, precio, stock, descripcion, marca, especificaciones, fecha_lanzamiento) VALUES
+          ('Laptop Dell XPS 15', 'Laptops', 1299.99, 25, 'Laptop de alto rendimiento con procesador Intel i7, 16GB RAM, SSD 512GB', 'Dell', 'Intel i7-12700H, 16GB DDR4, SSD 512GB NVMe, Pantalla 15.6" FHD', '2023-03-15'),
+          ('MacBook Pro 14" M3', 'Laptops', 1999.99, 15, 'MacBook Pro con chip M3, perfecta para profesionales creativos', 'Apple', 'Apple M3, 16GB RAM, SSD 512GB, Pantalla 14.2" Retina', '2023-10-30'),
+          ('iPhone 15 Pro', 'Smartphones', 999.99, 50, 'El smartphone más avanzado de Apple con chip A17 Pro', 'Apple', 'A17 Pro, 256GB almacenamiento, Cámara 48MP, Pantalla 6.1" Super Retina', '2023-09-22'),
+          ('Samsung Galaxy S24 Ultra', 'Smartphones', 1199.99, 35, 'Smartphone flagship con S Pen y cámara de 200MP', 'Samsung', 'Snapdragon 8 Gen 3, 256GB, Cámara 200MP, Pantalla 6.8" Dynamic AMOLED', '2024-01-17'),
+          ('PlayStation 5', 'Gaming', 499.99, 45, 'Consola de videojuegos de última generación', 'Sony', 'AMD Zen 2, 16GB GDDR6, SSD 825GB, Ray Tracing', '2020-11-12')
+        `);
+        
+        // Insertar usuarios de ejemplo
+        await pool.query(`
+          INSERT INTO usuarios (nombre, email, telefono, total_compras) VALUES
+          ('Juan Pérez', 'juan.perez@email.com', '+34 600 123 456', 3),
+          ('María García', 'maria.garcia@email.com', '+34 600 234 567', 5),
+          ('Carlos López', 'carlos.lopez@email.com', '+34 600 345 678', 2)
+        `);
+        
+        console.log('✅ Datos de ejemplo insertados');
+      }
+      
     } catch (error) {
       console.error('Error conectando a PostgreSQL:', error);
       throw error;
