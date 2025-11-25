@@ -8,13 +8,14 @@
 
 1. [Configuración Base](#configuración-base)
 2. [Endpoints Generales](#endpoints-generales)
-3. [Endpoints de Chat con IA](#endpoints-de-chat-con-ia)
-4. [Endpoints de Modelos Groq](#endpoints-de-modelos-groq)
-5. [Endpoints de Productos](#endpoints-de-productos)
-6. [Endpoints de Modelos (BD)](#endpoints-de-modelos-bd)
-7. [Endpoints de Usuarios](#endpoints-de-usuarios)
-8. [Endpoints de Estadísticas](#endpoints-de-estadísticas)
-9. [Ejemplos de Uso en Frontend](#ejemplos-de-uso-en-frontend)
+3. [Endpoints de Autenticación](#endpoints-de-autenticación)
+4. [Endpoints de Chat con IA](#endpoints-de-chat-con-ia)
+5. [Endpoints de Modelos Groq](#endpoints-de-modelos-groq)
+6. [Endpoints de Productos](#endpoints-de-productos)
+7. [Endpoints de Modelos (BD)](#endpoints-de-modelos-bd)
+8. [Endpoints CRUD de Usuarios](#endpoints-crud-de-usuarios)
+9. [Endpoints de Estadísticas](#endpoints-de-estadísticas)
+10. [Ejemplos de Uso en Frontend](#ejemplos-de-uso-en-frontend)
 
 ---
 
@@ -59,6 +60,350 @@ const data = await response.json();
 //   ai_provider: "Groq",
 //   model: "llama-3.3-70b-versatile"
 // }
+```
+
+---
+
+## 🔐 Endpoints de Autenticación
+
+Todos los endpoints de autenticación devuelven un **token JWT** que debes guardar y enviar en las peticiones protegidas usando el header `Authorization: Bearer <token>`.
+
+### Registro de Usuario
+
+**POST** `/api/auth/register`
+
+Registra un nuevo usuario en el sistema.
+
+**Body:**
+```json
+{
+  "nombreCompleto": "Juan Pérez",
+  "email": "juan@example.com",
+  "password": "miPassword123",
+  "telefono": "+34 600 123 456"  // Opcional
+}
+```
+
+**Respuesta:**
+```json
+{
+  "success": true,
+  "message": "Usuario registrado correctamente",
+  "usuario": {
+    "id": 1,
+    "nombre_completo": "Juan Pérez",
+    "email": "juan@example.com",
+    "telefono": "+34 600 123 456",
+    "fecha_registro": "2025-01-15T10:30:00.000Z",
+    "metodo_auth": "local",
+    "activo": true,
+    "email_verificado": false
+  },
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**Ejemplo:**
+```javascript
+async function registrarUsuario(datos) {
+  const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(datos)
+  });
+  
+  const data = await response.json();
+  
+  if (data.success) {
+    // Guardar token en localStorage
+    localStorage.setItem('authToken', data.token);
+    localStorage.setItem('usuario', JSON.stringify(data.usuario));
+  }
+  
+  return data;
+}
+
+// Uso
+await registrarUsuario({
+  nombreCompleto: 'Juan Pérez',
+  email: 'juan@example.com',
+  password: 'miPassword123',
+  telefono: '+34 600 123 456'
+});
+```
+
+---
+
+### Login de Usuario
+
+**POST** `/api/auth/login`
+
+Inicia sesión con email y contraseña.
+
+**Body:**
+```json
+{
+  "email": "juan@example.com",
+  "password": "miPassword123"
+}
+```
+
+**Respuesta:**
+```json
+{
+  "success": true,
+  "message": "Login exitoso",
+  "usuario": {
+    "id": 1,
+    "nombre_completo": "Juan Pérez",
+    "email": "juan@example.com",
+    "telefono": "+34 600 123 456",
+    "fecha_registro": "2025-01-15T10:30:00.000Z",
+    "fecha_ultimo_login": "2025-01-15T12:00:00.000Z",
+    "metodo_auth": "local",
+    "activo": true
+  },
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**Ejemplo:**
+```javascript
+async function login(email, password) {
+  const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ email, password })
+  });
+  
+  const data = await response.json();
+  
+  if (data.success) {
+    localStorage.setItem('authToken', data.token);
+    localStorage.setItem('usuario', JSON.stringify(data.usuario));
+  }
+  
+  return data;
+}
+
+// Uso
+await login('juan@example.com', 'miPassword123');
+```
+
+**Usuarios por defecto (creados automáticamente):**
+- Email: `limasmirko@gmail.com` / Contraseña: `1234567lp`
+- Email: `shandler@gmail.com` / Contraseña: `1234567lp`
+
+---
+
+### Verificar Token
+
+**GET** `/api/auth/verify`
+
+Verifica si el token JWT es válido y obtiene información del usuario autenticado.
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Respuesta:**
+```json
+{
+  "success": true,
+  "usuario": {
+    "id": 1,
+    "nombre_completo": "Juan Pérez",
+    "email": "juan@example.com"
+  },
+  "message": "Token válido"
+}
+```
+
+**Ejemplo:**
+```javascript
+async function verificarToken() {
+  const token = localStorage.getItem('authToken');
+  
+  if (!token) {
+    return null;
+  }
+  
+  const response = await fetch(`${API_BASE_URL}/api/auth/verify`, {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  
+  if (response.ok) {
+    const data = await response.json();
+    return data.usuario;
+  }
+  
+  // Token inválido o expirado
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('usuario');
+  return null;
+}
+```
+
+---
+
+### Obtener Perfil del Usuario Autenticado
+
+**GET** `/api/auth/perfil`
+
+Obtiene el perfil completo del usuario autenticado.
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Respuesta:**
+```json
+{
+  "success": true,
+  "usuario": {
+    "id": 1,
+    "nombre_completo": "Juan Pérez",
+    "email": "juan@example.com",
+    "telefono": "+34 600 123 456",
+    "fecha_registro": "2025-01-15T10:30:00.000Z",
+    "fecha_ultimo_login": "2025-01-15T12:00:00.000Z",
+    "total_compras": 5,
+    "activo": true,
+    "metodo_auth": "local"
+  }
+}
+```
+
+**Ejemplo:**
+```javascript
+async function obtenerPerfil() {
+  const token = localStorage.getItem('authToken');
+  
+  const response = await fetch(`${API_BASE_URL}/api/auth/perfil`, {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  
+  const data = await response.json();
+  return data.usuario;
+}
+```
+
+---
+
+### Actualizar Perfil
+
+**PUT** `/api/auth/perfil`
+
+Actualiza el perfil del usuario autenticado.
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Body:**
+```json
+{
+  "nombreCompleto": "Juan Pérez Actualizado",  // Opcional
+  "telefono": "+34 600 999 999"  // Opcional
+}
+```
+
+**Respuesta:**
+```json
+{
+  "success": true,
+  "message": "Perfil actualizado correctamente",
+  "usuario": {
+    "id": 1,
+    "nombre_completo": "Juan Pérez Actualizado",
+    "email": "juan@example.com",
+    "telefono": "+34 600 999 999"
+  }
+}
+```
+
+**Ejemplo:**
+```javascript
+async function actualizarPerfil(datos) {
+  const token = localStorage.getItem('authToken');
+  
+  const response = await fetch(`${API_BASE_URL}/api/auth/perfil`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify(datos)
+  });
+  
+  const data = await response.json();
+  return data;
+}
+
+// Uso
+await actualizarPerfil({
+  nombreCompleto: 'Juan Pérez Actualizado',
+  telefono: '+34 600 999 999'
+});
+```
+
+---
+
+### Cambiar Contraseña
+
+**PUT** `/api/auth/cambiar-password`
+
+Cambia la contraseña del usuario autenticado.
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Body:**
+```json
+{
+  "passwordActual": "miPassword123",
+  "passwordNueva": "miNuevaPassword456"
+}
+```
+
+**Respuesta:**
+```json
+{
+  "success": true,
+  "mensaje": "Contraseña actualizada correctamente"
+}
+```
+
+**Ejemplo:**
+```javascript
+async function cambiarPassword(passwordActual, passwordNueva) {
+  const token = localStorage.getItem('authToken');
+  
+  const response = await fetch(`${API_BASE_URL}/api/auth/cambiar-password`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ passwordActual, passwordNueva })
+  });
+  
+  const data = await response.json();
+  return data;
+}
 ```
 
 ---
@@ -491,25 +836,34 @@ const data = await response.json();
 
 ---
 
-## 👥 Endpoints de Usuarios
+## 👥 Endpoints CRUD de Usuarios
+
+Todos estos endpoints requieren autenticación con token JWT.
 
 ### Obtener Todos los Usuarios
 
 **GET** `/api/usuarios`
 
-Obtiene todos los usuarios registrados.
+Obtiene todos los usuarios registrados (requiere autenticación).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
 
 **Respuesta:**
 ```json
 {
   "success": true,
+  "total": 2,
   "usuarios": [
     {
       "id": 1,
-      "nombre": "Juan Pérez",
+      "nombre_completo": "Juan Pérez",
       "email": "juan.perez@email.com",
       "telefono": "+34 600 123 456",
       "fecha_registro": "2025-11-25T19:58:34.000Z",
+      "fecha_ultimo_login": "2025-11-25T20:00:00.000Z",
       "total_compras": 3,
       "activo": true
     }
@@ -519,8 +873,172 @@ Obtiene todos los usuarios registrados.
 
 **Ejemplo:**
 ```javascript
-const response = await fetch(`${API_BASE_URL}/api/usuarios`);
-const data = await response.json();
+async function obtenerUsuarios() {
+  const token = localStorage.getItem('authToken');
+  
+  const response = await fetch(`${API_BASE_URL}/api/usuarios`, {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  
+  const data = await response.json();
+  return data.usuarios;
+}
+```
+
+---
+
+### Obtener Usuario por ID
+
+**GET** `/api/usuarios/:id`
+
+Obtiene un usuario específico por su ID. **Solo puedes ver tu propio perfil** (el ID debe coincidir con el usuario autenticado).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Parámetros:**
+- `id` (path): ID del usuario
+
+**Respuesta:**
+```json
+{
+  "success": true,
+  "usuario": {
+    "id": 1,
+    "nombre_completo": "Juan Pérez",
+    "email": "juan.perez@email.com",
+    "telefono": "+34 600 123 456",
+    "fecha_registro": "2025-11-25T19:58:34.000Z",
+    "fecha_ultimo_login": "2025-11-25T20:00:00.000Z",
+    "total_compras": 3,
+    "activo": true
+  }
+}
+```
+
+**Ejemplo:**
+```javascript
+async function obtenerUsuarioPorId(id) {
+  const token = localStorage.getItem('authToken');
+  
+  const response = await fetch(`${API_BASE_URL}/api/usuarios/${id}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  
+  const data = await response.json();
+  return data.usuario;
+}
+```
+
+---
+
+### Actualizar Usuario
+
+**PUT** `/api/usuarios/:id`
+
+Actualiza un usuario. **Solo puedes actualizar tu propio perfil** (el ID debe coincidir con el usuario autenticado).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Parámetros:**
+- `id` (path): ID del usuario
+
+**Body:**
+```json
+{
+  "nombreCompleto": "Juan Pérez Actualizado",  // Opcional
+  "telefono": "+34 600 999 999"  // Opcional
+}
+```
+
+**Respuesta:**
+```json
+{
+  "success": true,
+  "message": "Usuario actualizado correctamente",
+  "usuario": {
+    "id": 1,
+    "nombre_completo": "Juan Pérez Actualizado",
+    "email": "juan.perez@email.com",
+    "telefono": "+34 600 999 999"
+  }
+}
+```
+
+**Ejemplo:**
+```javascript
+async function actualizarUsuario(id, datos) {
+  const token = localStorage.getItem('authToken');
+  
+  const response = await fetch(`${API_BASE_URL}/api/usuarios/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify(datos)
+  });
+  
+  const data = await response.json();
+  return data;
+}
+```
+
+---
+
+### Eliminar Usuario (Soft Delete)
+
+**DELETE** `/api/usuarios/:id`
+
+Elimina un usuario (marca como inactivo). **Solo puedes eliminar tu propia cuenta** (el ID debe coincidir con el usuario autenticado).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Parámetros:**
+- `id` (path): ID del usuario
+
+**Respuesta:**
+```json
+{
+  "success": true,
+  "message": "Usuario eliminado correctamente"
+}
+```
+
+**Ejemplo:**
+```javascript
+async function eliminarUsuario(id) {
+  const token = localStorage.getItem('authToken');
+  
+  const response = await fetch(`${API_BASE_URL}/api/usuarios/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  
+  const data = await response.json();
+  
+  if (data.success) {
+    // Limpiar datos locales
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('usuario');
+  }
+  
+  return data;
+}
 ```
 
 ---
@@ -611,6 +1129,133 @@ sessionId = null;
 ---
 
 ## 💻 Ejemplos de Uso en Frontend
+
+### Ejemplo Completo: Sistema de Autenticación
+
+```javascript
+const API_BASE_URL = 'https://proyecto-azure-backend.onrender.com';
+
+// Clase para manejar autenticación
+class AuthService {
+  constructor() {
+    this.token = localStorage.getItem('authToken');
+    this.usuario = JSON.parse(localStorage.getItem('usuario') || 'null');
+  }
+  
+  // Registrar nuevo usuario
+  async registrar(datos) {
+    const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(datos)
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      this.token = data.token;
+      this.usuario = data.usuario;
+      localStorage.setItem('authToken', this.token);
+      localStorage.setItem('usuario', JSON.stringify(this.usuario));
+    }
+    
+    return data;
+  }
+  
+  // Login
+  async login(email, password) {
+    const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      this.token = data.token;
+      this.usuario = data.usuario;
+      localStorage.setItem('authToken', this.token);
+      localStorage.setItem('usuario', JSON.stringify(this.usuario));
+    }
+    
+    return data;
+  }
+  
+  // Logout
+  logout() {
+    this.token = null;
+    this.usuario = null;
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('usuario');
+  }
+  
+  // Verificar si está autenticado
+  isAuthenticated() {
+    return !!this.token;
+  }
+  
+  // Obtener headers con token
+  getAuthHeaders() {
+    return {
+      'Authorization': `Bearer ${this.token}`,
+      'Content-Type': 'application/json'
+    };
+  }
+  
+  // Verificar token
+  async verificarToken() {
+    if (!this.token) return false;
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/verify`, {
+        headers: { 'Authorization': `Bearer ${this.token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        this.usuario = data.usuario;
+        return true;
+      }
+    } catch (error) {
+      console.error('Error verificando token:', error);
+    }
+    
+    this.logout();
+    return false;
+  }
+}
+
+// Uso
+const auth = new AuthService();
+
+// Registrar usuario
+await auth.registrar({
+  nombreCompleto: 'Juan Pérez',
+  email: 'juan@example.com',
+  password: 'miPassword123'
+});
+
+// Login
+await auth.login('limasmirko@gmail.com', '1234567lp');
+
+// Verificar autenticación
+if (auth.isAuthenticated()) {
+  console.log('Usuario autenticado:', auth.usuario);
+  
+  // Hacer petición autenticada
+  const response = await fetch(`${API_BASE_URL}/api/auth/perfil`, {
+    headers: auth.getAuthHeaders()
+  });
+  const data = await response.json();
+  console.log('Perfil:', data.usuario);
+}
+
+// Logout
+auth.logout();
+```
+
+---
 
 ### Ejemplo Completo: Chat con Memoria y Selección de Modelo
 
@@ -869,18 +1514,33 @@ try {
 
 1. **CORS**: El servidor tiene CORS habilitado, así que puedes hacer peticiones desde cualquier dominio.
 
-2. **Modelo por Defecto**: Si no envías el parámetro `modelo` en `/api/chat`, se usará el modelo configurado en el servidor (`llama-3.3-70b-versatile`).
+2. **Autenticación JWT**: 
+   - Los tokens JWT expiran después del tiempo configurado (por defecto 7 días)
+   - Guarda el token en `localStorage` o `sessionStorage` según tus necesidades
+   - Incluye el token en el header `Authorization: Bearer <token>` para endpoints protegidos
+   - Si el token expira, el usuario debe hacer login nuevamente
 
-3. **Formato de Respuestas**: Las respuestas del chat vienen en formato **Markdown**. Necesitas renderizar el Markdown en tu frontend.
+3. **Usuarios por Defecto**: El sistema crea automáticamente estos usuarios al iniciar:
+   - `limasmirko@gmail.com` / Contraseña: `1234567lp`
+   - `shandler@gmail.com` / Contraseña: `1234567lp`
 
-4. **Formato de Fechas**: Las fechas vienen en formato ISO 8601 (ej: `2025-11-25T21:18:54.589Z`).
+4. **Modelo por Defecto**: Si no envías el parámetro `modelo` en `/api/chat`, se usará el modelo configurado en el servidor (`llama-3.3-70b-versatile`).
 
-5. **Precios**: Los precios vienen como strings en algunos casos. Convierte a número si necesitas hacer cálculos:
+5. **Formato de Respuestas**: Las respuestas del chat vienen en formato **Markdown**. Necesitas renderizar el Markdown en tu frontend.
+
+6. **Formato de Fechas**: Las fechas vienen en formato ISO 8601 (ej: `2025-11-25T21:18:54.589Z`).
+
+7. **Precios**: Los precios vienen como strings en algunos casos. Convierte a número si necesitas hacer cálculos:
    ```javascript
    const precio = parseFloat(producto.precio);
    ```
 
-6. **JSONB**: El campo `datos_adicionales` en modelos es JSONB y puede contener cualquier estructura JSON.
+8. **JSONB**: El campo `datos_adicionales` en modelos es JSONB y puede contener cualquier estructura JSON.
+
+9. **Permisos de Usuarios**: 
+   - Solo puedes ver y modificar tu propio perfil
+   - El endpoint `/api/usuarios` lista todos los usuarios pero requiere autenticación
+   - La eliminación de usuarios es "soft delete" (marca como inactivo, no elimina físicamente)
 
 ---
 
