@@ -187,6 +187,9 @@ export async function initDatabase() {
       
       console.log('✅ Tablas de PostgreSQL creadas/verificadas correctamente');
       
+      // Migrar estructura de tabla usuarios si es necesario
+      await migrarTablaUsuarios();
+      
       // Crear usuarios por defecto si no existen
       await crearUsuariosPorDefecto();
       
@@ -284,6 +287,82 @@ export async function initDatabase() {
     
     // Crear usuarios por defecto si no existen
     await crearUsuariosPorDefecto();
+  }
+}
+
+// Función para migrar la tabla usuarios si tiene estructura antigua
+async function migrarTablaUsuarios() {
+  if (!usePostgres) return;
+  
+  try {
+    // Verificar si existe la columna nombre_completo
+    const checkColumn = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'usuarios' AND column_name = 'nombre_completo'
+    `);
+    
+    // Si no existe nombre_completo, verificar si existe nombre (estructura antigua)
+    if (checkColumn.rows.length === 0) {
+      const checkOldColumn = await pool.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'usuarios' AND column_name = 'nombre'
+      `);
+      
+      if (checkOldColumn.rows.length > 0) {
+        console.log('🔄 Migrando tabla usuarios: renombrando columna "nombre" a "nombre_completo"');
+        // Renombrar columna nombre a nombre_completo
+        await pool.query(`
+          ALTER TABLE usuarios RENAME COLUMN nombre TO nombre_completo
+        `);
+        console.log('✅ Columna renombrada correctamente');
+      }
+    }
+    
+    // Verificar y agregar columnas faltantes si es necesario
+    const columns = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'usuarios'
+    `);
+    
+    const columnNames = columns.rows.map(row => row.column_name);
+    
+    // Agregar columnas que puedan faltar
+    if (!columnNames.includes('password')) {
+      await pool.query(`ALTER TABLE usuarios ADD COLUMN password VARCHAR(255)`);
+      console.log('✅ Columna "password" agregada');
+    }
+    
+    if (!columnNames.includes('telefono')) {
+      await pool.query(`ALTER TABLE usuarios ADD COLUMN telefono VARCHAR(50)`);
+      console.log('✅ Columna "telefono" agregada');
+    }
+    
+    if (!columnNames.includes('metodo_auth')) {
+      await pool.query(`ALTER TABLE usuarios ADD COLUMN metodo_auth VARCHAR(50) DEFAULT 'local'`);
+      console.log('✅ Columna "metodo_auth" agregada');
+    }
+    
+    if (!columnNames.includes('email_verificado')) {
+      await pool.query(`ALTER TABLE usuarios ADD COLUMN email_verificado BOOLEAN DEFAULT false`);
+      console.log('✅ Columna "email_verificado" agregada');
+    }
+    
+    if (!columnNames.includes('fecha_ultimo_login')) {
+      await pool.query(`ALTER TABLE usuarios ADD COLUMN fecha_ultimo_login TIMESTAMP`);
+      console.log('✅ Columna "fecha_ultimo_login" agregada');
+    }
+    
+    if (!columnNames.includes('updated_at')) {
+      await pool.query(`ALTER TABLE usuarios ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
+      console.log('✅ Columna "updated_at" agregada');
+    }
+    
+  } catch (error) {
+    console.error('⚠️ Error en migración de tabla usuarios:', error.message);
+    // No lanzar error para no detener el inicio del servidor
   }
 }
 
