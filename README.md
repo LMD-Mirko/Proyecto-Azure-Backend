@@ -29,8 +29,11 @@ npm run init-db
 
 3. (Opcional) Poblar la tabla de modelos con datos de ejemplo:
 ```bash
-node scripts/poblarModelos.js
+npm run poblar-modelos
 ```
+
+### ✅ Nuevos datos de ejemplo (actualización)
+He agregado más elementos de ejemplo para que las vistas y APIs muestren datos variados (más productos, modelos, wearables, cámaras, routers, dispositivos smart-home y más). Puedes poblar la base de datos local ejecutando los comandos anteriores; la inicialización automática del servidor también insertará estos elementos cuando la base esté vacía.
 
 4. El archivo `.env` ya está configurado con tus credenciales de Groq.
 

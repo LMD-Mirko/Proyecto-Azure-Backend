@@ -208,6 +208,50 @@ const productos = [
   }
 ];
 
+// Añadimos más productos de ejemplo para mejorar las vistas
+productos.push(
+  {
+    nombre: 'Router ASUS ROG AXE300',
+    categoria: 'Redes',
+    precio: 299.99,
+    stock: 25,
+    descripcion: 'Router WiFi 6E para gaming y altas velocidades',
+    marca: 'ASUS',
+    especificaciones: 'WiFi 6E, Tri-band, 10Gbps WAN',
+    fecha_lanzamiento: '2024-02-10'
+  },
+  {
+    nombre: 'Cámara Canon EOS R6',
+    categoria: 'Cámaras',
+    precio: 2499.99,
+    stock: 10,
+    descripcion: 'Cámara mirrorless profesional con estabilización',
+    marca: 'Canon',
+    especificaciones: 'CMOS 20MP, 4K60, IBIS',
+    fecha_lanzamiento: '2021-07-15'
+  },
+  {
+    nombre: 'Google Nest Audio',
+    categoria: 'Smart Home',
+    precio: 99.99,
+    stock: 50,
+    descripcion: 'Altavoz inteligente con Google Assistant',
+    marca: 'Google',
+    especificaciones: 'Altavoz inteligente, alta calidad de sonido',
+    fecha_lanzamiento: '2021-10-05'
+  },
+  {
+    nombre: 'Fitbit Charge 6',
+    categoria: 'Wearables',
+    precio: 179.99,
+    stock: 60,
+    descripcion: 'Pulsera de actividad con GPS y monitoreo avanzado de salud',
+    marca: 'Fitbit',
+    especificaciones: 'Monitor de ritmo cardíaco, GPS integrado',
+    fecha_lanzamiento: '2024-01-20'
+  }
+);
+
 // Datos falsos de usuarios
 const usuarios = [
   { nombre: 'Juan Pérez', email: 'juan.perez@email.com', telefono: '+34 600 123 456', total_compras: 3 },
@@ -221,6 +265,12 @@ const usuarios = [
   { nombre: 'Miguel Ruiz', email: 'miguel.ruiz@email.com', telefono: '+34 600 901 234', total_compras: 3 },
   { nombre: 'Elena Díaz', email: 'elena.diaz@email.com', telefono: '+34 600 012 345', total_compras: 8 }
 ];
+
+// Usuarios adicionales
+usuarios.push(
+  { nombre: 'Oscar Muñoz', email: 'oscar.munoz@email.com', telefono: '+34 600 111 222', total_compras: 2 },
+  { nombre: 'Patricia Vega', email: 'patricia.vega@email.com', telefono: '+34 600 222 333', total_compras: 4 }
+);
 
 // Insertar productos
 const insertProducto = db.prepare(`
@@ -279,6 +329,8 @@ try {
   insertVenta.run(3, 10, 1, 349.99);
   insertVenta.run(4, 2, 1, 1999.99);
   insertVenta.run(5, 15, 1, 149.99);
+  insertVenta.run(6, 18, 1, 299.99);
+  insertVenta.run(7, 19, 2, 2499.98);
   console.log('✅ Insertadas 5 ventas de ejemplo');
   
   console.log('\n🎉 Base de datos poblada correctamente!');

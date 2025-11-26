@@ -143,6 +143,42 @@ const modelosEjemplo = [
   }
 ];
 
+// Agregamos más modelos para enriquecer las vistas y demostrar variedad
+modelosEjemplo.push(
+  {
+    nombre: 'Google Nest Audio',
+    tipo: 'Smart Speaker',
+    marca: 'Google',
+    especificaciones: 'Altavoz inteligente, 1 unidad',
+    descripcion: 'Altavoz inteligente para reproducir música y controlar dispositivos del hogar',
+    datos_adicionales: { precio: 99, stock: 50 }
+  },
+  {
+    nombre: 'Bose QuietComfort 45',
+    tipo: 'Audio',
+    marca: 'Bose',
+    especificaciones: 'Cancelación de ruido, 24h batería',
+    descripcion: 'Auriculares premium con excelente cancelación de ruido',
+    datos_adicionales: { precio: 349, stock: 20 }
+  },
+  {
+    nombre: 'Fitbit Charge 6',
+    tipo: 'Wearable',
+    marca: 'Fitbit',
+    especificaciones: 'GPS integrado, monitor de sueño',
+    descripcion: 'Pulsera de actividad con métricas avanzadas',
+    datos_adicionales: { precio: 179, stock: 60 }
+  },
+  {
+    nombre: 'DJI Mini 4',
+    tipo: 'Drone',
+    marca: 'DJI',
+    especificaciones: '4K, 3-ejes, batería 30 min',
+    descripcion: 'Drone compacto para fotografía aérea',
+    datos_adicionales: { precio: 899, stock: 12 }
+  }
+);
+
 // Insertar modelos
 const insertModelo = db.prepare(`
   INSERT INTO modelos (nombre, tipo, marca, especificaciones, descripcion, datos_adicionales)
